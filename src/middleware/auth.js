@@ -1,5 +1,5 @@
 const jwt = require('jsonwebtoken');
-const Admin = require('../models/Admin');
+const { Admin } = require('../models');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret-change-in-production';
 
@@ -15,11 +15,13 @@ async function requireAdmin(req, res, next) {
   }
   try {
     const decoded = jwt.verify(token, JWT_SECRET);
-    const admin = await Admin.findById(decoded.adminId);
+    const admin = await Admin.findByPk(decoded.adminId, {
+      attributes: ['id', 'email', 'name', 'created_at'],
+    });
     if (!admin) {
       return res.status(401).json({ success: false, message: 'Admin not found' });
     }
-    req.admin = admin;
+    req.admin = admin.get ? admin.get({ plain: true }) : admin;
     req.adminId = admin.id;
     next();
   } catch (err) {

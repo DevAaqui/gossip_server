@@ -1,32 +1,38 @@
-const db = require('../config/db');
-const bcrypt = require('bcryptjs');
-
-async function findByEmail(email) {
-  const [rows] = await db.execute('SELECT * FROM admins WHERE email = ?', [email]);
-  return rows[0] || null;
-}
-
-async function findById(id) {
-  const [rows] = await db.execute('SELECT id, email, name, created_at FROM admins WHERE id = ?', [id]);
-  return rows[0] || null;
-}
-
-async function create({ email, password, name }) {
-  const password_hash = await bcrypt.hash(password, 10);
-  const [result] = await db.execute(
-    'INSERT INTO admins (email, password_hash, name) VALUES (?, ?, ?)',
-    [email, password_hash, name || null]
+module.exports = (sequelize, DataTypes) => {
+  const Admin = sequelize.define(
+    "Admin",
+    {
+      id: {
+        type: DataTypes.INTEGER,
+        autoIncrement: true,
+        primaryKey: true,
+      },
+      email: {
+        type: DataTypes.STRING(255),
+        allowNull: false,
+        unique: true,
+      },
+      password_hash: {
+        type: DataTypes.STRING(255),
+        allowNull: false,
+      },
+      name: {
+        type: DataTypes.STRING(255),
+        allowNull: true,
+      },
+    },
+    {
+      tableName: "admins",
+      underscored: true,
+      timestamps: true,
+      createdAt: "created_at",
+      updatedAt: "updated_at",
+    },
   );
-  return result.insertId;
-}
 
-function comparePassword(plain, hash) {
-  return bcrypt.compare(plain, hash);
-}
+  Admin.associate = (models) => {
+    Admin.hasMany(models.Post, { foreignKey: "admin_id" });
+  };
 
-module.exports = {
-  findByEmail,
-  findById,
-  create,
-  comparePassword,
+  return Admin;
 };

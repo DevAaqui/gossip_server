@@ -3,7 +3,8 @@
  * Usage: node scripts/seedAdmin.js [email] [password]
  */
 require('dotenv').config();
-const Admin = require('../src/models/Admin');
+const bcrypt = require('bcryptjs');
+const { Admin } = require('../src/models');
 
 async function main() {
   const email = process.argv[2] || process.env.ADMIN_EMAIL;
@@ -13,12 +14,13 @@ async function main() {
     console.error('Or set ADMIN_EMAIL and ADMIN_PASSWORD in .env');
     process.exit(1);
   }
-  const existing = await Admin.findByEmail(email);
+  const existing = await Admin.findOne({ where: { email } });
   if (existing) {
     console.log('Admin already exists for', email);
     process.exit(0);
   }
-  await Admin.create({ email, password, name: 'Admin' });
+  const password_hash = await bcrypt.hash(password, 10);
+  await Admin.create({ email, password_hash, name: 'Admin' });
   console.log('Admin created for', email);
   process.exit(0);
 }

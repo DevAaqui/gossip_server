@@ -1,102 +1,61 @@
-const db = require('../config/db');
-
-async function create({ admin_id, title, body, media_url, media_type }) {
-  const [result] = await db.execute(
-    `INSERT INTO posts (admin_id, title, body, media_url, media_type)
-     VALUES (?, ?, ?, ?, ?)`,
-    [admin_id, title, body, media_url || null, media_type || 'image']
+module.exports = (sequelize, DataTypes) => {
+  const Post = sequelize.define(
+    'Post',
+    {
+      id: {
+        type: DataTypes.INTEGER,
+        autoIncrement: true,
+        primaryKey: true,
+      },
+      admin_id: {
+        type: DataTypes.INTEGER,
+        allowNull: false,
+        references: { model: 'admins', key: 'id' },
+        onDelete: 'CASCADE',
+      },
+      title: {
+        type: DataTypes.STRING(500),
+        allowNull: false,
+      },
+      body: {
+        type: DataTypes.TEXT,
+        allowNull: false,
+      },
+      media_url: {
+        type: DataTypes.STRING(1000),
+        allowNull: true,
+      },
+      media_type: {
+        type: DataTypes.ENUM('image', 'video'),
+        defaultValue: 'image',
+      },
+      thumbs_up_count: {
+        type: DataTypes.INTEGER,
+        defaultValue: 0,
+      },
+      thumbs_down_count: {
+        type: DataTypes.INTEGER,
+        defaultValue: 0,
+      },
+      heart_count: {
+        type: DataTypes.INTEGER,
+        defaultValue: 0,
+      },
+    },
+    {
+      tableName: 'posts',
+      underscored: true,
+      timestamps: true,
+      createdAt: 'created_at',
+      updatedAt: 'updated_at',
+      indexes: [{ fields: ['created_at'], order: [['created_at', 'DESC']] }],
+    }
   );
-  return result.insertId;
-}
 
-async function findAll({ page = 1, limit = 10 } = {}) {
-  const offset = (Math.max(1, page) - 1) * Math.min(100, Math.max(1, limit));
-  const limitVal = Math.min(100, Math.max(1, limit));
-  const [rows] = await db.execute(
-    `SELECT id, admin_id, title, body, media_url, media_type,
-            thumbs_up_count, thumbs_down_count, heart_count, created_at, updated_at
-     FROM posts ORDER BY created_at DESC LIMIT ? OFFSET ?`,
-    [limitVal, offset]
-  );
-  return rows;
-}
+  Post.associate = (models) => {
+    Post.belongsTo(models.Admin, { foreignKey: 'admin_id' });
+    Post.hasMany(models.Reaction, { foreignKey: 'post_id' });
+  };
 
-async function findById(id) {
-  const [rows] = await db.execute(
-    `SELECT id, admin_id, title, body, media_url, media_type,
-            thumbs_up_count, thumbs_down_count, heart_count, created_at, updated_at
-     FROM posts WHERE id = ?`,
-    [id]
-  );
-  return rows[0] || null;
-}
-
-async function findByAdminId(admin_id, { page = 1, limit = 20 } = {}) {
-  const offset = (Math.max(1, page) - 1) * Math.min(100, Math.max(1, limit));
-  const limitVal = Math.min(100, Math.max(1, limit));
-  const [rows] = await db.execute(
-    `SELECT id, admin_id, title, body, media_url, media_type,
-            thumbs_up_count, thumbs_down_count, heart_count, created_at, updated_at
-     FROM posts WHERE admin_id = ? ORDER BY created_at DESC LIMIT ? OFFSET ?`,
-    [admin_id, limitVal, offset]
-  );
-  return rows;
-}
-
-async function update(id, admin_id, { title, body, media_url, media_type }) {
-  const updates = [];
-  const values = [];
-  if (title !== undefined) {
-    updates.push('title = ?');
-    values.push(title);
-  }
-  if (body !== undefined) {
-    updates.push('body = ?');
-    values.push(body);
-  }
-  if (media_url !== undefined) {
-    updates.push('media_url = ?');
-    values.push(media_url);
-  }
-  if (media_type !== undefined) {
-    updates.push('media_type = ?');
-    values.push(media_type);
-  }
-  if (updates.length === 0) return false;
-  values.push(id, admin_id);
-  const [result] = await db.execute(
-    `UPDATE posts SET ${updates.join(', ')} WHERE id = ? AND admin_id = ?`,
-    values
-  );
-  return result.affectedRows > 0;
-}
-
-async function remove(id, admin_id) {
-  const [result] = await db.execute('DELETE FROM posts WHERE id = ? AND admin_id = ?', [id, admin_id]);
-  return result.affectedRows > 0;
-}
-
-async function incrementReaction(post_id, reaction_type) {
-  const col = reaction_type === 'thumbs_up' ? 'thumbs_up_count'
-    : reaction_type === 'thumbs_down' ? 'thumbs_down_count'
-    : 'heart_count';
-  await db.execute(`UPDATE posts SET ${col} = ${col} + 1 WHERE id = ?`, [post_id]);
-}
-
-async function decrementReaction(post_id, reaction_type) {
-  const col = reaction_type === 'thumbs_up' ? 'thumbs_up_count'
-    : reaction_type === 'thumbs_down' ? 'thumbs_down_count'
-    : 'heart_count';
-  await db.execute(`UPDATE posts SET ${col} = GREATEST(0, ${col} - 1) WHERE id = ?`, [post_id]);
-}
-
-module.exports = {
-  create,
-  findAll,
-  findById,
-  findByAdminId,
-  update,
-  remove,
-  incrementReaction,
-  decrementReaction,
+  return Post;
 };

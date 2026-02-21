@@ -1,7 +1,8 @@
-const Admin = require('../models/Admin');
-const Post = require('../models/Post');
+const bcrypt = require('bcryptjs');
+const { Admin, Post } = require('../models');
 const { signToken } = require('../middleware/auth');
 const { getMediaUrl } = require('../middleware/upload');
+const { formatPost } = require('../utils/formatPost');
 
 async function login(req, res) {
   try {
@@ -9,11 +10,11 @@ async function login(req, res) {
     if (!email || !password) {
       return res.status(400).json({ success: false, message: 'Email and password required' });
     }
-    const admin = await Admin.findByEmail(email);
+    const admin = await Admin.findOne({ where: { email } });
     if (!admin) {
       return res.status(401).json({ success: false, message: 'Invalid email or password' });
     }
-    const match = await Admin.comparePassword(password, admin.password_hash);
+    const match = await bcrypt.compare(password, admin.password_hash);
     if (!match) {
       return res.status(401).json({ success: false, message: 'Invalid email or password' });
     }
@@ -29,20 +30,35 @@ async function login(req, res) {
   }
 }
 
+function inferMediaTypeFromUrl(url) {
+  if (!url) return 'image';
+  const u = url.toLowerCase();
+  if (u.includes('.mp4') || u.includes('.webm') || u.includes('video')) return 'video';
+  return 'image';
+}
+
 async function createPost(req, res) {
   try {
     const admin_id = req.adminId;
-    const { title, body } = req.body;
+    const { title, body, imageUri, media_url: bodyMediaUrl, media_type: bodyMediaType } = req.body;
     let media_url = null;
     let media_type = 'image';
     if (req.file) {
       media_url = getMediaUrl(req.file.filename);
       const videoMimes = ['video/mp4', 'video/webm'];
       media_type = videoMimes.includes(req.file.mimetype) ? 'video' : 'image';
+    } else if (imageUri || bodyMediaUrl) {
+      media_url = (imageUri || bodyMediaUrl).trim();
+      media_type = bodyMediaType === 'video' ? 'video' : inferMediaTypeFromUrl(media_url);
     }
-    const id = await Post.create({ admin_id, title, body, media_url, media_type });
-    const post = await Post.findById(id);
-    return res.status(201).json({ success: true, post });
+    const post = await Post.create({
+      admin_id,
+      title,
+      body,
+      media_url: media_url || null,
+      media_type: media_type || 'image',
+    });
+    return res.status(201).json({ success: true, post: formatPost(post) });
   } catch (err) {
     console.error('Create post error:', err);
     return res.status(500).json({ success: false, message: 'Server error' });
@@ -56,25 +72,31 @@ async function updatePost(req, res) {
     if (isNaN(postId)) {
       return res.status(400).json({ success: false, message: 'Invalid post id' });
     }
-    const existing = await Post.findById(postId);
+    const existing = await Post.findByPk(postId);
     if (!existing) {
       return res.status(404).json({ success: false, message: 'Post not found' });
     }
     if (existing.admin_id !== admin_id) {
       return res.status(403).json({ success: false, message: 'Not allowed to edit this post' });
     }
-    const { title, body } = req.body;
+    const { title, body, imageUri, media_url: bodyMediaUrl, media_type: bodyMediaType } = req.body;
     let media_url = existing.media_url;
     let media_type = existing.media_type;
     if (req.file) {
       media_url = getMediaUrl(req.file.filename);
       const videoMimes = ['video/mp4', 'video/webm'];
       media_type = videoMimes.includes(req.file.mimetype) ? 'video' : 'image';
+    } else if (imageUri !== undefined || bodyMediaUrl !== undefined) {
+      const url = (imageUri || bodyMediaUrl || '').trim();
+      media_url = url || null;
+      media_type = bodyMediaType === 'video' ? 'video' : inferMediaTypeFromUrl(media_url || '');
     }
-    const updates = { title: title !== undefined ? title : existing.title, body: body !== undefined ? body : existing.body, media_url, media_type };
-    await Post.update(postId, admin_id, updates);
-    const post = await Post.findById(postId);
-    return res.json({ success: true, post });
+    existing.title = title !== undefined ? title : existing.title;
+    existing.body = body !== undefined ? body : existing.body;
+    existing.media_url = media_url;
+    existing.media_type = media_type;
+    await existing.save();
+    return res.json({ success: true, post: formatPost(existing) });
   } catch (err) {
     console.error('Update post error:', err);
     return res.status(500).json({ success: false, message: 'Server error' });
@@ -88,14 +110,14 @@ async function deletePost(req, res) {
     if (isNaN(postId)) {
       return res.status(400).json({ success: false, message: 'Invalid post id' });
     }
-    const existing = await Post.findById(postId);
+    const existing = await Post.findByPk(postId);
     if (!existing) {
       return res.status(404).json({ success: false, message: 'Post not found' });
     }
     if (existing.admin_id !== admin_id) {
       return res.status(403).json({ success: false, message: 'Not allowed to delete this post' });
     }
-    await Post.remove(postId, admin_id);
+    await Post.destroy({ where: { id: postId, admin_id } });
     return res.json({ success: true, message: 'Post deleted' });
   } catch (err) {
     console.error('Delete post error:', err);
@@ -106,10 +128,16 @@ async function deletePost(req, res) {
 async function listMyPosts(req, res) {
   try {
     const admin_id = req.adminId;
-    const page = parseInt(req.query.page, 10) || 1;
-    const limit = parseInt(req.query.limit, 10) || 20;
-    const posts = await Post.findByAdminId(admin_id, { page, limit });
-    return res.json({ success: true, posts });
+    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 20));
+    const offset = (page - 1) * limit;
+    const posts = await Post.findAll({
+      where: { admin_id },
+      order: [['created_at', 'DESC']],
+      limit,
+      offset,
+    });
+    return res.json({ success: true, posts: posts.map(formatPost) });
   } catch (err) {
     console.error('List admin posts error:', err);
     return res.status(500).json({ success: false, message: 'Server error' });

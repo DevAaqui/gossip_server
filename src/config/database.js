@@ -2,12 +2,12 @@ require('dotenv').config();
 const { Sequelize } = require('sequelize');
 
 const sequelize = new Sequelize(
-  process.env.DB_NAME || 'gossip_db',
-  process.env.DB_USER || 'root',
-  process.env.DB_PASSWORD || '',
+  process.env.MYSQLDATABASE || 'gossip_db',
+  process.env.MYSQLUSER || 'root',
+  process.env.MYSQLPASSWORD || '',
   {
-    host: process.env.DB_HOST || 'localhost',
-    port: parseInt(process.env.DB_PORT, 10) || 3306,
+    host: process.env.MYSQLHOST || 'mysql.railway.internal',
+    port: parseInt(process.env.MYSQLPORT, 10) || 3306,
     dialect: 'mysql',
     pool: {
       max: 10,

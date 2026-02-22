@@ -1,6 +1,14 @@
 require('dotenv').config();
 const { Sequelize } = require('sequelize');
 
+console.log(process.env.MYSQL_PUBLIC_URL);
+
+console.log(process.env.MYSQLDATABASE);
+console.log(process.env.MYSQLUSER);
+console.log(process.env.MYSQLPASSWORD);
+console.log(process.env.MYSQLHOST);
+console.log(process.env.MYSQLPORT);
+
 const sequelize = new Sequelize(
   process.env.MYSQLDATABASE || 'gossip_db',
   process.env.MYSQLUSER || 'root',
